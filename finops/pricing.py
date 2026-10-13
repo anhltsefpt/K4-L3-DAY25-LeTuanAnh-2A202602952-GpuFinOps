@@ -102,3 +102,31 @@ def spot_checkpoint_cost(
         "on_demand_cost": round(on_demand_cost, 2),
         "savings_pct": round(savings_pct, 1),
     }
+
+
+def cache_break_even_reads(
+    price_in_per_m: float,
+    write_premium: float = 0.25,     # Anthropic 5-min cache write ~1.25x base input
+    read_discount: float = 0.10,     # cached read billed at 0.1x
+    storage_per_m: float = 0.0,      # Gemini-style explicit cache storage, $/1M-token per TTL
+) -> float:
+    """Reads per cached prefix needed before caching pays for itself.
+
+    Writing a prefix costs (write_premium * price + storage) per 1M tokens on top of
+    the normal input bill; every later read saves (1 - read_discount) * price.
+    """
+    saving_per_read = price_in_per_m * (1.0 - read_discount)
+    if saving_per_read <= 0:
+        return float("inf")
+    return (write_premium * price_in_per_m + storage_per_m) / saving_per_read
+
+
+def cache_is_worth_it(
+    avg_cache_reads: float,
+    price_in_per_m: float,
+    write_premium: float = 0.25,
+    read_discount: float = 0.10,
+    storage_per_m: float = 0.0,
+) -> bool:
+    """Cache only saves money when read savings exceed the write (+ storage) cost."""
+    return avg_cache_reads > cache_break_even_reads(price_in_per_m, write_premium, read_discount, storage_per_m)
